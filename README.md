@@ -1,7 +1,6 @@
 Fault
 ======
-
-[![Build Status](https://drone.io/github.com/surullabs/fault/status.png)](https://drone.io/github.com/surullabs/fault/latest) [![GoDoc](https://godoc.org/github.com/surullabs/fault?status.png)](https://godoc.org/github.com/surullabs/fault)
+[![GoDoc](https://godoc.org/github.com/surullabs/fault?status.png)](https://godoc.org/github.com/surullabs/fault) [![Build Status](https://drone.io/github.com/surullabs/fault/status.png)](https://drone.io/github.com/surullabs/fault/latest) [![Coverage Status](https://coveralls.io/repos/surullabs/fault/badge.png)](https://coveralls.io/r/surullabs/fault)
 
 Fault is a tiny library that helps with package internal error handling in Go.
 

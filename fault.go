@@ -45,6 +45,9 @@ type ErrorChain struct {
 	chain []error
 }
 
+// String returns the same value as Error()
+func (c *ErrorChain) String() string { return c.Error() }
+
 // Errors returns all errors in the chain
 func (c *ErrorChain) Errors() []error { return c.chain }
 
@@ -162,6 +165,14 @@ type errorFault struct {
 }
 
 func (e errorFault) Fault() error { return e.err }
+
+func (e errorFault) String() string {
+	if e.err == nil {
+		return ""
+	}
+	return e.err.Error()
+
+}
 
 // Check will panic with a fault if the condition provided is false
 // The fault error will be the result of a call to fmt.Errorf(format, args...)

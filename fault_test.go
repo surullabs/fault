@@ -239,3 +239,19 @@ func TestContains(t *testing.T) {
 		}
 	}
 }
+
+func TestString(t *testing.T) {
+	err := Chain(errors.New("err1"))
+	if err.Error() != err.String() || err.Error() != "err1" {
+		t.Error("Error string does not match")
+	}
+
+	fault := errorFault{err: nil}
+	if fault.String() != "" {
+		t.Error("Fault string not empty")
+	}
+	fault.err = err
+	if fault.String() != "err1" {
+		t.Error("Fault string mismatch")
+	}
+}

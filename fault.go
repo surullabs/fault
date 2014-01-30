@@ -10,17 +10,23 @@ This is then recovered using a defer for a all exported methods, which then retu
 an error extracted from the fault. As an example, if you were to be reading data
 from a file and then writing it you could use
 
+	import (
+		"github.com/surullabs/fault"
+	)
+
+	var check = fault.Checker{}
+
 	func ExportedMethod() (err error) {
 		// Set up the recovery. err will be automatically populated and all
 		// non-fault panics will be propogated.
-		defer func() { fault.Recover(&err, recover()) } ()
+		defer check.Recover(&err)
 
 		// If there is an error in ReadFile the method will automatically return
 		// the error.
-		data := fault.CheckReturn(ioutil.ReadFile("filename")).([]byte)
+		data := check.Return(ioutil.ReadFile("filename")).([]byte)
 		// If yourFn returns false the function will return an error
 		// formatted as "condition is not true: yourData"
-		fault.Check(yourFn(data), "condition is not true: %s", string(data))
+		check.Truef(yourFn(data), "condition is not true: %s", string(data))
 	}
 
 It also provides access to an ErrorChain class which can be used to chain errors together.
@@ -31,14 +37,10 @@ Please look at the tests for more sample usage.
 package fault
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
-
-// Fault is an interface for representing a package internal fault.
-type Fault interface {
-	Fault() error // Error tied to this fault
-}
 
 // ErrorChain is a list of errors and can be used to chain errors together.
 type ErrorChain struct {
@@ -133,31 +135,43 @@ func Contains(chain, target error) bool {
 	return false
 }
 
-// Recover is used to recover from faults that were expressed through
-// panics.
-//
-// The expected usage is as follows
-//
-//	func MyExportedFunc() (err error) {
-//		defer func() { fault.Recover(&err, recover()) }()
-//		// On error raise a fault. err will be automatically
-//		// populated
-//		panic(myFault)
-//	}
-//
-// The first argument must hold a pointer to an error which will
-// be set to an error generated from second argument if that is a Fault.
-// If the second argument is nil nothing will be done. If it is non-nil
-// and does not implement Fault a panic will be re-raised.
-//
-func Recover(errPtr *error, panicked interface{}) {
-	if panicked == nil {
+// Fault is an interface for representing a package internal fault.
+type Fault interface {
+	Fault() error // Error tied to this fault
+}
+
+// FaultCheck is an interface providing functionality to check for faults and recover from them.
+type FaultCheck interface {
+	// Recover is used to recover from faults that were expressed through panics.
+	// It will call recover() internally and the error variable pointed to by the argument will be populated with the fault information.
+	Recover(*error)
+	// True will panic with a fault if the condition provided is false
+	// The fault error string will be the second argument
+	True(bool, string)
+	// Truef behaves like Check with the error string as the result of a call to fmt.Errorf(format, args...)
+	Truef(bool, string, ...interface{})
+	// Return will panic if the error provided is not nil. It will return the first argument if not
+	Return(interface{}, error) interface{}
+	// Error is equivalent to a call to Return(nil, err)
+	Error(error)
+	// Output functions exactly as Return, with the only difference being that the output is included in the error message.
+	// This can be useful when debugging use of os/exec package for instance.
+	Output(interface{}, error) interface{}
+}
+
+// Checker provides a default implementation of FaultCheck
+type Checker struct{}
+
+// Recover implements FaultCheck.Recover
+func (Checker) Recover(errPtr *error) {
+	if panicked := recover(); panicked == nil {
 		return
 	} else if fault, faulty := panicked.(Fault); faulty {
 		*errPtr = Chain(*errPtr, fault.Fault())
 		return
+	} else {
+		panic(panicked)
 	}
-	panic(panicked)
 }
 
 type errorFault struct {
@@ -174,30 +188,36 @@ func (e errorFault) String() string {
 
 }
 
-// Check will panic with a fault if the condition provided is false
-// The fault error will be the result of a call to fmt.Errorf(format, args...)
-func Check(condition bool, format string, args ...interface{}) {
+func (Checker) True(condition bool, errStr string) {
+	if !condition {
+		panic(errorFault{err: errors.New(errStr)})
+	}
+}
+
+// True implements FaultCheck.True
+func (Checker) Truef(condition bool, format string, args ...interface{}) {
 	if !condition {
 		panic(errorFault{err: fmt.Errorf(format, args...)})
 	}
 }
 
-// CheckReturn will panic if the error provided is not nil. It will return
-// the first argument if not
-func CheckReturn(i interface{}, err error) interface{} {
+// Return implements FaultCheck.Return
+func (Checker) Return(i interface{}, err error) interface{} {
 	if err != nil {
 		panic(errorFault{err: err})
 	}
 	return i
 }
 
-// CheckError is equivalent to a call to CheckReturn(nil, err)
-func CheckError(err error) { CheckReturn(nil, err) }
+// Error implements FaultCheck.Error
+func (Checker) Error(err error) {
+	if err != nil {
+		panic(errorFault{err: err})
+	}
+}
 
-// CheckOutput functions exactly as CheckReturn, with the only
-// difference being that the output is included in the error message.
-// This can be useful when debugging use of os/exec package for instance.
-func CheckOutput(i interface{}, err error) interface{} {
+// Output implements FaultCheck.Output
+func (Checker) Output(i interface{}, err error) interface{} {
 	if err != nil {
 		panic(errorFault{err: &ErrorChain{chain: []error{err, fmt.Errorf("output: %v", i)}}})
 	}

@@ -8,6 +8,8 @@ import (
 	"testing"
 )
 
+var check FaultCheck = Checker{}
+
 func TestErrorChain(t *testing.T) {
 	for _, test := range []struct {
 		name string
@@ -129,7 +131,7 @@ func TestErrorChain(t *testing.T) {
 }
 
 func runRecover(fn func()) (err error) {
-	defer func() { Recover(&err, recover()) }()
+	defer check.Recover(&err)
 	fn()
 	return
 }
@@ -142,23 +144,33 @@ func TestRecover(t *testing.T) {
 	}{
 		{
 			"Check false",
-			func() { Check(false, "error1") },
+			func() { check.True(false, "error1") },
 			"error1",
 		},
 		{
 			"Check true",
-			func() { Check(true, "error1") },
+			func() { check.True(true, "error1") },
+			"",
+		},
+		{
+			"Checkf false",
+			func() { check.Truef(false, "error1 %s", "error") },
+			"error1 error",
+		},
+		{
+			"Checkf true",
+			func() { check.Truef(true, "error1 %s", "error") },
 			"",
 		},
 		{
 			"Check return",
-			func() { CheckReturn("str", errors.New("error1")) },
+			func() { check.Return("str", errors.New("error1")) },
 			"error1",
 		},
 		{
 			"Check return success",
 			func() {
-				if "str" != CheckReturn("str", nil).(string) {
+				if "str" != check.Return("str", nil).(string) {
 					t.Error("Check return failed")
 				}
 			},
@@ -166,13 +178,13 @@ func TestRecover(t *testing.T) {
 		},
 		{
 			"Check output",
-			func() { CheckOutput("str", errors.New("error1")) },
+			func() { check.Output("str", errors.New("error1")) },
 			"error1; output: str",
 		},
 		{
 			"Check output success",
 			func() {
-				if "str" != CheckOutput("str", nil).(string) {
+				if "str" != check.Output("str", nil).(string) {
 					t.Error("Check output failed")
 				}
 			},
@@ -180,12 +192,12 @@ func TestRecover(t *testing.T) {
 		},
 		{
 			"Check error",
-			func() { CheckError(errors.New("error1")) },
+			func() { check.Error(errors.New("error1")) },
 			"error1",
 		},
 		{
 			"Check error no error",
-			func() { CheckError(nil) },
+			func() { check.Error(nil) },
 			"",
 		},
 	} {
@@ -253,5 +265,66 @@ func TestString(t *testing.T) {
 	fault.err = err
 	if fault.String() != "err1" {
 		t.Error("Fault string mismatch")
+	}
+}
+
+func testFunc(fail bool) (string, error) {
+	if fail {
+		return "", errors.New("error")
+	} else {
+		return "not failed", nil
+	}
+}
+
+func runNormal(fail bool) (result string, err error) {
+	result, err = testFunc(false)
+	if err != nil {
+		return
+	}
+	return
+}
+
+func runCheck(fail bool) (result string, err error) {
+	defer check.Recover(&err)
+	result = check.Return(testFunc(fail)).(string)
+	return
+}
+
+func runNoRecover() {
+	check.Return(testFunc(false))
+}
+
+func recoverOnly() (err error) {
+	defer check.Recover(&err)
+	return
+}
+
+func BenchmarkNormalSuccess(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		runNormal(false)
+	}
+}
+
+func BenchmarkNormalFailure(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		runNormal(true)
+	}
+}
+
+func BenchmarkCheckReturnFailure(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		runCheck(true)
+	}
+}
+
+func BenchmarkCheckReturnOnly(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		runNoRecover()
+	}
+}
+
+func BenchmarkCheckRecoverOnlyNoError(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		recoverOnly()
 	}
 }

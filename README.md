@@ -10,17 +10,23 @@ This is then recovered using a defer for a all exported methods, which then retu
 an error extracted from the fault. As an example, if you were to be reading data
 from a file and then writing it you could use
 
+	import (
+		"github.com/surullabs/fault"
+	)
+
+	var check = fault.Checker{}
+
 	func ExportedMethod() (err error) {
 		// Set up the recovery. err will be automatically populated and all
 		// non-fault panics will be propogated.
-		defer func() { fault.Recover(&err, recover()) } ()
+		defer check.Recover(&err)
 
 		// If there is an error in ReadFile the method will automatically return
 		// the error.
-		data := fault.CheckReturn(ioutil.ReadFile("filename")).([]byte)
+		data := check.Return(ioutil.ReadFile("filename")).([]byte)
 		// If yourFn returns false the function will return an error
 		// formatted as "condition is not true: yourData"
-		fault.Check(yourFn(data), "condition is not true: %s", string(data))
+		check.Truef(yourFn(data), "condition is not true: %s", string(data))
 	}
 
 It also provides access to an ErrorChain class which can be used to chain errors together.
@@ -30,6 +36,22 @@ Errors can be transparently checked for existence in a chain by calling the Cont
 
 Please consult the package [GoDoc](https://godoc.org/github.com/surullabs/fault)
  for detailed documentation.
+
+## Benchmarks
+
+On an 2.000 GHz Intel i7-2630QM CPU there was ~70 ns overhead per CheckReturn call
+with 164 ns overhead for the call to Recover(...). The results of the naive benchmarks
+in the package are below (formatted for clarity)
+
+	BenchmarkNormalSuccess			200000000		8.50 ns/op
+	BenchmarkNormalFailure			200000000		8.98 ns/op
+	BenchmarkCheckReturnFailure		2000000			941 ns/op
+	BenchmarkCheckReturnOnly		20000000	        77.8 ns/op
+	BenchmarkCheckRecoverOnlyNoError	10000000		164 ns/op
+
+If you wish to test the overhead on your machine please run
+
+	go test github.com/surullabs/fault -bench .
 
 ## Licensing and Usage
 

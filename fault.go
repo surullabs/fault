@@ -155,6 +155,7 @@ type FaultCheck interface {
 	// Error is equivalent to a call to Return(nil, err)
 	Error(error)
 	// Output functions exactly as Return, with the only difference being that the output is included in the error message.
+	// If the output is a byte array it is converted to a string.
 	// This can be useful when debugging use of os/exec package for instance.
 	Output(interface{}, error) interface{}
 }
@@ -219,7 +220,13 @@ func (Checker) Error(err error) {
 // Output implements FaultCheck.Output
 func (Checker) Output(i interface{}, err error) interface{} {
 	if err != nil {
-		panic(errorFault{err: &ErrorChain{chain: []error{err, fmt.Errorf("output: %v", i)}}})
+		var out string
+		if bytes, isByteArray := i.([]byte); isByteArray {
+			out = string(bytes)
+		} else {
+			out = fmt.Sprintf("%v", i)
+		}
+		panic(errorFault{err: &ErrorChain{chain: []error{err, fmt.Errorf("output: %s", out)}}})
 	}
 	return i
 }

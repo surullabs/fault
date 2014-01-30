@@ -182,6 +182,11 @@ func TestRecover(t *testing.T) {
 			"error1; output: str",
 		},
 		{
+			"Check output bytes",
+			func() { check.Output([]byte("str bytes"), errors.New("error1")) },
+			"error1; output: str bytes",
+		},
+		{
 			"Check output success",
 			func() {
 				if "str" != check.Output("str", nil).(string) {

@@ -39,6 +39,9 @@ package fault
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
+	"reflect"
+	"runtime"
 	"strings"
 )
 
@@ -137,7 +140,13 @@ func Contains(chain, target error) bool {
 
 // Fault is an interface for representing a package internal fault.
 type Fault interface {
-	Fault() error // Error tied to this fault
+	// Fault returns the error tied to this fault
+	Fault() error
+}
+
+// Faulter is an interface used to generate faults from errors
+type Faulter interface {
+	New(err error) Fault
 }
 
 // FaultCheck is an interface providing functionality to check for faults and recover from them.
@@ -161,27 +170,37 @@ type FaultCheck interface {
 }
 
 // Checker provides a default implementation of FaultCheck
-type Checker struct{}
+type Checker struct {
+	faulter Faulter
+}
+
+func NewChecker() *Checker { return &Checker{faulter: ErrorFaulter{}} }
+
+func (c *Checker) SetFaulter(f Faulter) { c.faulter = f }
 
 // Recover implements FaultCheck.Recover
-func (Checker) Recover(errPtr *error) {
+func (c *Checker) Recover(errPtr *error) {
 	if panicked := recover(); panicked == nil {
 		return
 	} else if fault, faulty := panicked.(Fault); faulty {
-		*errPtr = Chain(*errPtr, fault.Fault())
+		*errPtr = Chain(fault.Fault(), *errPtr)
 		return
 	} else {
 		panic(panicked)
 	}
 }
 
+type ErrorFaulter struct{}
+
+func (ErrorFaulter) New(err error) Fault { return &errorFault{err: err} }
+
 type errorFault struct {
 	err error
 }
 
-func (e errorFault) Fault() error { return e.err }
+func (e *errorFault) Fault() error { return e.err }
 
-func (e errorFault) String() string {
+func (e *errorFault) String() string {
 	if e.err == nil {
 		return ""
 	}
@@ -189,36 +208,36 @@ func (e errorFault) String() string {
 
 }
 
-func (Checker) True(condition bool, errStr string) {
+func (c *Checker) True(condition bool, errStr string) {
 	if !condition {
-		panic(errorFault{err: errors.New(errStr)})
+		panic(c.faulter.New(errors.New(errStr)))
 	}
 }
 
 // True implements FaultCheck.True
-func (Checker) Truef(condition bool, format string, args ...interface{}) {
+func (c *Checker) Truef(condition bool, format string, args ...interface{}) {
 	if !condition {
-		panic(errorFault{err: fmt.Errorf(format, args...)})
+		panic(c.faulter.New(fmt.Errorf(format, args...)))
 	}
 }
 
 // Return implements FaultCheck.Return
-func (Checker) Return(i interface{}, err error) interface{} {
+func (c *Checker) Return(i interface{}, err error) interface{} {
 	if err != nil {
-		panic(errorFault{err: err})
+		panic(c.faulter.New(err))
 	}
 	return i
 }
 
 // Error implements FaultCheck.Error
-func (Checker) Error(err error) {
+func (c *Checker) Error(err error) {
 	if err != nil {
-		panic(errorFault{err: err})
+		panic(c.faulter.New(err))
 	}
 }
 
 // Output implements FaultCheck.Output
-func (Checker) Output(i interface{}, err error) interface{} {
+func (c *Checker) Output(i interface{}, err error) interface{} {
 	if err != nil {
 		var out string
 		if bytes, isByteArray := i.([]byte); isByteArray {
@@ -226,7 +245,76 @@ func (Checker) Output(i interface{}, err error) interface{} {
 		} else {
 			out = fmt.Sprintf("%v", i)
 		}
-		panic(errorFault{err: &ErrorChain{chain: []error{err, fmt.Errorf("output: %s", out)}}})
+		panic(c.faulter.New(&ErrorChain{chain: []error{err, fmt.Errorf("output: %s", out)}}))
 	}
 	return i
+}
+
+// Call provides information about a function call.
+type Call struct {
+	File string // File provides the file of the caller
+	Line int    // Line provides the line number
+	Name string // Name is the name of the calling function
+}
+
+func (c Call) String() string { return fmt.Sprintf("%s:%d:%s", filepath.Base(c.File), c.Line, c.Name) }
+
+type debugFault struct {
+	err   error
+	trace []Call
+}
+
+func GetTrace(err error) (trace []Call) {
+	if chain, isChain := err.(*ErrorChain); isChain {
+		if fault, isFault := chain.Errors()[0].(*debugFault); isFault {
+			return fault.trace
+		}
+	}
+	return nil
+}
+
+func (d *debugFault) Error() string {
+	var call *Call
+	if len(d.trace) == 0 {
+		call = &Call{"?", -1, "?"}
+	} else {
+		call = &d.trace[0]
+	}
+	return fmt.Sprintf("%v: %s", *call, d.err.Error())
+}
+
+func (d *debugFault) Fault() error { return d }
+
+type DebugFaulter struct{}
+
+var checkerPrefix = func() string {
+	checkerType := reflect.TypeOf(Checker{})
+	return fmt.Sprintf("%s.(*%s)", checkerType.PkgPath(), checkerType.Name())
+}()
+
+func (DebugFaulter) New(err error) Fault {
+	fault := &debugFault{err: err, trace: make([]Call, 0)}
+	var (
+		pc uintptr
+		fn *runtime.Func
+	)
+	appendTo := false
+	for skip, ok := 0, true; ok; skip++ {
+		call := Call{Name: "?"}
+		if pc, call.File, call.Line, ok = runtime.Caller(skip); !ok {
+			break
+		}
+		if fn = runtime.FuncForPC(pc); fn != nil {
+			call.Name = fn.Name()
+		}
+
+		if appendTo {
+			fault.trace = append(fault.trace, call)
+		}
+		if strings.HasPrefix(call.Name, checkerPrefix) {
+			appendTo = true
+		}
+
+	}
+	return fault
 }

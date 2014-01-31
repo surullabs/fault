@@ -5,10 +5,16 @@ package fault
 
 import (
 	"errors"
+	"fmt"
+	"reflect"
+	"runtime"
 	"testing"
 )
 
-var check FaultCheck = Checker{}
+// for testing
+var _ = fmt.Sprintf
+
+var check FaultCheck = NewChecker()
 
 func TestErrorChain(t *testing.T) {
 	for _, test := range []struct {
@@ -263,13 +269,65 @@ func TestString(t *testing.T) {
 		t.Error("Error string does not match")
 	}
 
-	fault := errorFault{err: nil}
+	fault := &errorFault{err: nil}
 	if fault.String() != "" {
 		t.Error("Fault string not empty")
 	}
 	fault.err = err
 	if fault.String() != "err1" {
 		t.Error("Fault string mismatch")
+	}
+}
+
+func getIntForDebug(failErr error) (retVal int, err error) {
+	return 5, failErr
+}
+
+func DebugFaultFunc(failErr error) (err error) {
+	debug := NewChecker()
+	debug.SetFaulter(DebugFaulter{})
+
+	defer debug.Recover(&err)
+	debug.True(3 == debug.Return(getIntForDebug(failErr)).(int), "Number mismatch")
+	return
+}
+
+func TestDebugging(t *testing.T) {
+	ptr := reflect.ValueOf(DebugFaultFunc).Pointer()
+	fn := runtime.FuncForPC(ptr)
+	name := fn.Name()
+	_, line := fn.FileLine(ptr)
+	prefix := fmt.Sprintf("fault_test.go:%d:%s", line+5, name) // The fail is 5 lines into the function
+	for _, test := range []struct {
+		fail     error
+		expected string
+	}{
+		{nil, prefix + ": Number mismatch"},
+		{errors.New("return error"), prefix + ": return error"},
+	} {
+		err := DebugFaultFunc(test.fail)
+		trace := GetTrace(err)
+		if len(trace) == 0 {
+			t.Error("No debug trace found when testing err", test.fail)
+			continue
+		}
+
+		if trace[0].Name != name {
+			t.Error("Unexpected trace beginning", trace[0].Name, "expected", name)
+		}
+		if test.expected != err.Error() {
+			t.Error("Expected", test.expected, "found", err.Error())
+		}
+	}
+
+	// Now test a missing trace
+	if GetTrace(errors.New("err")) != nil {
+		t.Error("Found trace when non expected")
+	}
+
+	errStr := (&debugFault{err: errors.New("err")}).Error()
+	if errStr != "?:-1:?: err" {
+		t.Error("Found invalid error string")
 	}
 }
 
@@ -295,12 +353,33 @@ func runCheck(fail bool) (result string, err error) {
 	return
 }
 
+var debugCheck = func() *Checker {
+	checker := NewChecker()
+	checker.SetFaulter(DebugFaulter{})
+	return checker
+}()
+
+func runDebug(fail bool) (result string, err error) {
+	defer debugCheck.Recover(&err)
+	result = debugCheck.Return(testFunc(fail)).(string)
+	return
+}
+
+func runNoRecoverDebug() {
+	debugCheck.Return(testFunc(false))
+}
+
 func runNoRecover() {
 	check.Return(testFunc(false))
 }
 
 func recoverOnly() (err error) {
 	defer check.Recover(&err)
+	return
+}
+
+func recoverOnlyDebug() (err error) {
+	defer debugCheck.Recover(&err)
 	return
 }
 
@@ -331,5 +410,23 @@ func BenchmarkCheckReturnOnly(b *testing.B) {
 func BenchmarkCheckRecoverOnlyNoError(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		recoverOnly()
+	}
+}
+
+func BenchmarkCheckReturnFailureDebug(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		runCheck(true)
+	}
+}
+
+func BenchmarkCheckReturnOnlyDebug(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		runNoRecoverDebug()
+	}
+}
+
+func BenchmarkCheckRecoverOnlyNoErrorDebug(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		recoverOnlyDebug()
 	}
 }

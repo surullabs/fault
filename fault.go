@@ -154,6 +154,9 @@ type FaultCheck interface {
 	// Recover is used to recover from faults that were expressed through panics.
 	// It will call recover() internally and the error variable pointed to by the argument will be populated with the fault information.
 	Recover(*error)
+	// RecoverPanic works exactly like recover with the exception that the second argument
+	// must be the result of a call to recover()
+	RecoverPanic(*error, interface{})
 	// True will panic with a fault if the condition provided is false
 	// The fault error string will be the second argument
 	True(bool, string)
@@ -178,9 +181,9 @@ func NewChecker() *Checker { return &Checker{faulter: ErrorFaulter{}} }
 
 func (c *Checker) SetFaulter(f Faulter) { c.faulter = f }
 
-// Recover implements FaultCheck.Recover
-func (c *Checker) Recover(errPtr *error) {
-	if panicked := recover(); panicked == nil {
+// RecoverPanic implements FaultCheck.RecoverPanic
+func (c *Checker) RecoverPanic(errPtr *error, panicked interface{}) {
+	if panicked == nil {
 		return
 	} else if fault, faulty := panicked.(Fault); faulty {
 		*errPtr = Chain(fault.Fault(), *errPtr)
@@ -188,6 +191,11 @@ func (c *Checker) Recover(errPtr *error) {
 	} else {
 		panic(panicked)
 	}
+}
+
+// Recover implements FaultCheck.Recover
+func (c *Checker) Recover(errPtr *error) {
+	c.RecoverPanic(errPtr, recover())
 }
 
 type ErrorFaulter struct{}
@@ -257,7 +265,16 @@ type Call struct {
 	Name string // Name is the name of the calling function
 }
 
-func (c Call) String() string { return fmt.Sprintf("%s:%d:%s", filepath.Base(c.File), c.Line, c.Name) }
+func (c *Call) String() string { return fmt.Sprintf("%s:%d:%s", filepath.Base(c.File), c.Line, c.Name) }
+
+func (c *Call) Equal(c2 *Call) bool {
+	if c == nil {
+		return c2 == nil
+	} else if c2 == nil {
+		return false
+	}
+	return c.File == c2.File && c.Line == c2.Line && c.Name == c2.Name
+}
 
 type debugFault struct {
 	err   error
@@ -273,27 +290,40 @@ func GetTrace(err error) (trace []Call) {
 	return nil
 }
 
-func (d *debugFault) Error() string {
-	var call *Call
-	if len(d.trace) == 0 {
+func StartSite(trace []Call) (call *Call) {
+	if len(trace) == 0 {
 		call = &Call{"?", -1, "?"}
 	} else {
-		call = &d.trace[0]
+		call = &trace[0]
 	}
-	return fmt.Sprintf("%v: %s", *call, d.err.Error())
+	return
+}
+
+func (d *debugFault) Error() string {
+	return fmt.Sprintf("%v: %s", StartSite(d.trace), d.err.Error())
 }
 
 func (d *debugFault) Fault() error { return d }
 
 type DebugFaulter struct{}
 
-var checkerPrefix = func() string {
-	checkerType := reflect.TypeOf(Checker{})
-	return fmt.Sprintf("%s.(*%s)", checkerType.PkgPath(), checkerType.Name())
-}()
+var checkerPrefix = TypePrefix(&Checker{})
 
-func (DebugFaulter) New(err error) Fault {
-	fault := &debugFault{err: err, trace: make([]Call, 0)}
+func TypePrefix(i interface{}) string {
+	val := reflect.ValueOf(i)
+	if val.Kind() == reflect.Ptr {
+		typeVal := val.Elem().Type()
+		return fmt.Sprintf("%s.(*%s)", typeVal.PkgPath(), typeVal.Name())
+	} else {
+		return fmt.Sprintf("%s.(%s)", val.Type().PkgPath(), val.Type().Name())
+	}
+}
+
+// ReadStack reads returns the stack after ignoring all calls up to the
+// function which has the first parameter as a prefix . An empty string returns
+// the entire stack.
+func ReadStack(prefix string) (trace []Call) {
+	trace = make([]Call, 0)
 	var (
 		pc uintptr
 		fn *runtime.Func
@@ -309,12 +339,15 @@ func (DebugFaulter) New(err error) Fault {
 		}
 
 		if appendTo {
-			fault.trace = append(fault.trace, call)
+			trace = append(trace, call)
 		}
-		if strings.HasPrefix(call.Name, checkerPrefix) {
+		if strings.HasPrefix(call.Name, prefix) {
 			appendTo = true
 		}
-
 	}
-	return fault
+	return
+}
+
+func (DebugFaulter) New(err error) Fault {
+	return &debugFault{err: err, trace: ReadStack(checkerPrefix)}
 }

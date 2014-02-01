@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"reflect"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -328,6 +329,38 @@ func TestDebugging(t *testing.T) {
 	errStr := (&debugFault{err: errors.New("err")}).Error()
 	if errStr != "?:-1:?: err" {
 		t.Error("Found invalid error string")
+	}
+}
+
+func TestTypePrefix(t *testing.T) {
+	if !strings.HasSuffix(TypePrefix(&Checker{}), "(*Checker)") {
+		t.Error("Invalid suffix for pointer")
+	}
+	if !strings.HasSuffix(TypePrefix(Checker{}), "(Checker)") {
+		t.Error("Invalid suffix for non pointer")
+	}
+}
+
+func TestCallEquals(t *testing.T) {
+	for _, test := range []struct {
+		c1     *Call
+		c2     *Call
+		result bool
+	}{
+		{nil, nil, true},
+		{nil, &Call{}, false},
+		{&Call{}, &Call{}, true},
+		{&Call{"f", 1, "n"}, nil, false},
+		{&Call{"f", 1, "n"}, &Call{"f", 2, "n"}, false},
+		{&Call{"f", 1, "n"}, &Call{"f", 1, "m"}, false},
+		{&Call{"f", 1, "n"}, &Call{"g", 1, "n"}, false},
+		{&Call{"f", 1, "n"}, &Call{"f", 1, "n"}, true},
+	} {
+		if test.c1.Equal(test.c2) != test.result {
+			t.Error("Equal error")
+		} else if test.c2.Equal(test.c1) != test.result {
+			t.Error("Equal not transitive")
+		}
 	}
 }
 

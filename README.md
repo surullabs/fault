@@ -32,6 +32,8 @@ from a file and then writing it you could use
 It also provides access to an ErrorChain class which can be used to chain errors together.
 Errors can be transparently checked for existence in a chain by calling the Contains method.
 
+*NOTE: The API is still not final and will be changed as better usage patterns emerge*
+
 ## Documentation and Examples
 
 Please consult the package [GoDoc](https://godoc.org/github.com/surullabs/fault)

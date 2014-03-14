@@ -14,7 +14,7 @@ from a file and then writing it you could use
 		"github.com/surullabs/fault"
 	)
 
-	var check = fault.Checker{}
+	var check = fault.NewChecker()
 
 	func ExportedMethod() (err error) {
 		// Set up the recovery. err will be automatically populated and all

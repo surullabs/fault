@@ -88,7 +88,7 @@ func (c *ErrorChain) Chain(err error) {
 
 // Chain will chain a list of errors passed in. The errors can
 // be of type *ErrorChain in which case their chains will be appended.
-func Chain(errs ...error) *ErrorChain {
+func Chain(errs ...error) error {
 	if len(errs) == 0 {
 		return nil
 	}
@@ -105,6 +105,9 @@ func Chain(errs ...error) *ErrorChain {
 
 	for _, err := range errs[1:] {
 		chain.Chain(err)
+	}
+	if len(chain.Errors()) == 0 {
+		return nil
 	}
 	return chain
 }
@@ -179,7 +182,10 @@ type Checker struct {
 
 func NewChecker() *Checker { return &Checker{faulter: ErrorFaulter{}} }
 
-func (c *Checker) SetFaulter(f Faulter) { c.faulter = f }
+func (c *Checker) SetFaulter(f Faulter) *Checker {
+	c.faulter = f
+	return c
+}
 
 // RecoverPanic implements FaultCheck.RecoverPanic
 func (c *Checker) RecoverPanic(errPtr *error, panicked interface{}) {

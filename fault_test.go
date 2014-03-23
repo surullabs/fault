@@ -20,34 +20,34 @@ var check FaultCheck = NewChecker()
 func TestErrorChain(t *testing.T) {
 	for _, test := range []struct {
 		name string
-		test func() *ErrorChain
+		test func() error
 		err  string
 	}{
 		{
 			"Test one error",
-			func() *ErrorChain { return &ErrorChain{chain: []error{errors.New("error1")}} },
+			func() error { return &ErrorChain{chain: []error{errors.New("error1")}} },
 			"error1",
 		},
 		{
 			"Test two errors",
-			func() *ErrorChain { return &ErrorChain{chain: []error{errors.New("error1"), errors.New("error2")}} },
+			func() error { return &ErrorChain{chain: []error{errors.New("error1"), errors.New("error2")}} },
 			"error1; error2",
 		},
 		{
 			"Test three errors",
-			func() *ErrorChain {
+			func() error {
 				return &ErrorChain{chain: []error{errors.New("error1"), errors.New("error2"), errors.New("error3")}}
 			},
 			"error1; error2; error3",
 		},
 		{
 			"Test error chain nil",
-			func() *ErrorChain { return &ErrorChain{} },
+			func() error { return &ErrorChain{} },
 			"",
 		},
 		{
 			"Test chain nil",
-			func() *ErrorChain {
+			func() error {
 				chain := &ErrorChain{chain: nil}
 				chain.Chain(errors.New("error1"))
 				return chain
@@ -56,7 +56,7 @@ func TestErrorChain(t *testing.T) {
 		},
 		{
 			"Test chain nil call",
-			func() *ErrorChain {
+			func() error {
 				chain := &ErrorChain{chain: []error{errors.New("error1")}}
 				chain.Chain(nil)
 				return chain
@@ -65,7 +65,7 @@ func TestErrorChain(t *testing.T) {
 		},
 		{
 			"Test chain one error",
-			func() *ErrorChain {
+			func() error {
 				chain := &ErrorChain{chain: []error{errors.New("error1")}}
 				chain.Chain(errors.New("error2"))
 				return chain
@@ -74,7 +74,7 @@ func TestErrorChain(t *testing.T) {
 		},
 		{
 			"Test chain multi nil",
-			func() *ErrorChain {
+			func() error {
 				chain := &ErrorChain{chain: []error{errors.New("error1")}}
 				chain.Chain(&ErrorChain{})
 				return chain
@@ -83,7 +83,7 @@ func TestErrorChain(t *testing.T) {
 		},
 		{
 			"Test chain multi",
-			func() *ErrorChain {
+			func() error {
 				chain := &ErrorChain{chain: []error{errors.New("error1")}}
 				chain.Chain(&ErrorChain{chain: []error{errors.New("error2"), errors.New("error3")}})
 				return chain
@@ -92,32 +92,32 @@ func TestErrorChain(t *testing.T) {
 		},
 		{
 			"Test chainer empty",
-			func() *ErrorChain { return Chain() },
+			func() error { return Chain() },
 			"",
 		},
 		{
 			"Test chainer one",
-			func() *ErrorChain { return Chain(errors.New("error1")) },
+			func() error { return Chain(errors.New("error1")) },
 			"error1",
 		},
 		{
 			"Test chainer two",
-			func() *ErrorChain { return Chain(errors.New("error1"), errors.New("error2")) },
+			func() error { return Chain(errors.New("error1"), errors.New("error2")) },
 			"error1; error2",
 		},
 		{
 			"Test chainer error chain",
-			func() *ErrorChain { return Chain(errors.New("error1"), Chain(errors.New("error2"))) },
+			func() error { return Chain(errors.New("error1"), Chain(errors.New("error2"))) },
 			"error1; error2",
 		},
 		{
 			"Test chainer error chain first",
-			func() *ErrorChain { return Chain(Chain(errors.New("error1")), errors.New("error2")) },
+			func() error { return Chain(Chain(errors.New("error1")), errors.New("error2")) },
 			"error1; error2",
 		},
 		{
 			"Test chainer error chain multi",
-			func() *ErrorChain { return Chain(Chain(errors.New("error1")), Chain(errors.New("error2"))) },
+			func() error { return Chain(Chain(errors.New("error1")), Chain(errors.New("error2"))) },
 			"error1; error2",
 		},
 	} {
@@ -131,9 +131,14 @@ func TestErrorChain(t *testing.T) {
 	}
 
 	// Test error listing
-	chain := Chain(errors.New("error1"), errors.New("error2"))
+	chain := Chain(errors.New("error1"), errors.New("error2")).(*ErrorChain)
 	if len(chain.Errors()) != 2 {
 		t.Error("Invalid chain found", chain.Errors())
+	}
+
+	// Test empty errors
+	if Chain(nil, nil, nil) != nil {
+		t.Error("Failed nil only chain")
 	}
 }
 
@@ -265,7 +270,7 @@ func TestContains(t *testing.T) {
 }
 
 func TestString(t *testing.T) {
-	err := Chain(errors.New("err1"))
+	err := Chain(errors.New("err1")).(*ErrorChain)
 	if err.Error() != err.String() || err.Error() != "err1" {
 		t.Error("Error string does not match")
 	}

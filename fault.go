@@ -50,6 +50,14 @@ type ErrorChain struct {
 	chain []error
 }
 
+// AsError returns an error if any are present in the chain or nil if not
+func (c *ErrorChain) AsError() error {
+	if c == nil || len(c.chain) == 0 {
+		return nil
+	}
+	return c
+}
+
 // String returns the same value as Error()
 func (c *ErrorChain) String() string { return c.Error() }
 
@@ -89,27 +97,11 @@ func (c *ErrorChain) Chain(err error) {
 // Chain will chain a list of errors passed in. The errors can
 // be of type *ErrorChain in which case their chains will be appended.
 func Chain(errs ...error) error {
-	if len(errs) == 0 {
-		return nil
-	}
-
 	chain := &ErrorChain{}
-	if errs[0] != nil {
-		switch e := errs[0].(type) {
-		case *ErrorChain:
-			chain.chain = e.chain
-		default:
-			chain.chain = []error{e}
-		}
-	}
-
-	for _, err := range errs[1:] {
+	for _, err := range errs {
 		chain.Chain(err)
 	}
-	if len(chain.Errors()) == 0 {
-		return nil
-	}
-	return chain
+	return chain.AsError()
 }
 
 // Contains will return true in the following cases:

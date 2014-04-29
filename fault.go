@@ -135,8 +135,10 @@ func Contains(chain, target error) bool {
 
 // Fault is an interface for representing a package internal fault.
 type Fault interface {
-	// Fault returns the error tied to this fault
-	Fault() error
+	// Cause returns the error tied to this fault
+	Cause() error
+	// Error returns the result of a call to Cause().Error()
+	Error() string
 }
 
 // Faulter is an interface used to generate faults from errors
@@ -184,7 +186,7 @@ func (c *Checker) RecoverPanic(errPtr *error, panicked interface{}) {
 	if panicked == nil {
 		return
 	} else if fault, faulty := panicked.(Fault); faulty {
-		*errPtr = Chain(fault.Fault(), *errPtr)
+		*errPtr = Chain(fault.Cause(), *errPtr)
 		return
 	} else {
 		panic(panicked)
@@ -204,7 +206,8 @@ type errorFault struct {
 	err error
 }
 
-func (e *errorFault) Fault() error { return e.err }
+func (e *errorFault) Error() string { return e.err.Error() }
+func (e *errorFault) Cause() error  { return e.err }
 
 func (e *errorFault) String() string {
 	if e.err == nil {
@@ -280,10 +283,11 @@ type debugFault struct {
 }
 
 func GetTrace(err error) (trace []Call) {
-	if chain, isChain := err.(*ErrorChain); isChain {
-		if fault, isFault := chain.Errors()[0].(*debugFault); isFault {
-			return fault.trace
-		}
+	if chain, isChain := err.(*ErrorChain); isChain && len(chain.Errors()) == 1 {
+		err = chain.Errors()[0]
+	}
+	if fault, isFault := err.(*debugFault); isFault {
+		return fault.trace
 	}
 	return nil
 }
@@ -301,7 +305,7 @@ func (d *debugFault) Error() string {
 	return fmt.Sprintf("%v: %s", StartSite(d.trace), d.err.Error())
 }
 
-func (d *debugFault) Fault() error { return d }
+func (d *debugFault) Cause() error { return d }
 
 type DebugFaulter struct{}
 
@@ -348,4 +352,30 @@ func ReadStack(prefix string) (trace []Call) {
 
 func (DebugFaulter) New(err error) Fault {
 	return &debugFault{err: err, trace: ReadStack(checkerPrefix)}
+}
+
+// Traced returns an error with the entire stack trace
+func Traced(err error) error {
+	if chain, isChain := err.(*ErrorChain); isChain && len(chain.Errors()) == 1 {
+		err = chain.Errors()[0]
+	}
+	if _, ok := err.(*debugFault); ok {
+		return err
+	}
+	trace := ReadStack("")
+	return &debugFault{err: err, trace: trace[1:]}
+}
+
+func VerboseTrace(err error) string {
+	trace := GetTrace(err)
+	if trace == nil {
+		return err.Error()
+	}
+
+	parts := make([]string, len(trace))
+	for i := range trace {
+		parts[i] = trace[i].String()
+	}
+	parts[0] = err.Error()
+	return strings.Join(parts, "\n")
 }

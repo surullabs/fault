@@ -75,9 +75,9 @@ func (c *ErrorChain) Error() string {
 
 // Chain appends the error provided to the current chain. If the
 // err is a chain then all errors in the chain are appended.
-func (c *ErrorChain) Chain(err error) {
+func (c *ErrorChain) Append(err error) *ErrorChain {
 	if err == nil {
-		return
+		return c
 	}
 
 	if c.chain == nil {
@@ -92,14 +92,17 @@ func (c *ErrorChain) Chain(err error) {
 	default:
 		c.chain = append(c.chain, e)
 	}
+	return c
 }
+
+func NewErrorChain() *ErrorChain { return &ErrorChain{} }
 
 // Chain will chain a list of errors passed in. The errors can
 // be of type *ErrorChain in which case their chains will be appended.
 func Chain(errs ...error) error {
 	chain := &ErrorChain{}
 	for _, err := range errs {
-		chain.Chain(err)
+		chain.Append(err)
 	}
 	return chain.AsError()
 }
@@ -167,6 +170,9 @@ type FaultCheck interface {
 	// If the output is a byte array it is converted to a string.
 	// This can be useful when debugging use of os/exec package for instance.
 	Output(interface{}, error) interface{}
+	// Fail will return a fault containing the provided error.
+	// Usage: panic(check.Failure(err))
+	Failure(error) Fault
 }
 
 // Checker provides a default implementation of FaultCheck
@@ -174,7 +180,14 @@ type Checker struct {
 	faulter Faulter
 }
 
-func NewChecker() *Checker { return &Checker{faulter: ErrorFaulter{}} }
+// NewChecker returns a new checker that includes stack traces with errors.
+//
+// 	var check fault.FaultCheck = fault.NewChecker()
+//
+// If you don't want the overhead of accumulating stack traces then use
+//
+//	var check fault.FaultCheck = fault.NewChecker().SetFaulter(fault.Simple)
+func NewChecker() *Checker { return &Checker{faulter: &DebugFaulter{}} }
 
 func (c *Checker) SetFaulter(f Faulter) *Checker {
 	c.faulter = f
@@ -198,9 +211,12 @@ func (c *Checker) Recover(errPtr *error) {
 	c.RecoverPanic(errPtr, recover())
 }
 
-type ErrorFaulter struct{}
+var Simple Faulter = errorFaulter{}
 
-func (ErrorFaulter) New(err error) Fault { return &errorFault{err: err} }
+// errorFaulter generates faults which do not contain a complete stack trace.
+type errorFaulter struct{}
+
+func (errorFaulter) New(err error) Fault { return &errorFault{err: err} }
 
 type errorFault struct {
 	err error
@@ -257,6 +273,10 @@ func (c *Checker) Output(i interface{}, err error) interface{} {
 		panic(c.faulter.New(&ErrorChain{chain: []error{err, fmt.Errorf("output: %s", out)}}))
 	}
 	return i
+}
+
+func (c *Checker) Failure(err error) Fault {
+	return c.faulter.New(err)
 }
 
 // Call provides information about a function call.

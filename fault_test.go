@@ -15,7 +15,7 @@ import (
 // for testing
 var _ = fmt.Sprintf
 
-var check FaultCheck = NewChecker()
+var check FaultCheck = NewChecker().SetFaulter(Simple)
 
 func TestErrorChain(t *testing.T) {
 	for _, test := range []struct {
@@ -49,7 +49,7 @@ func TestErrorChain(t *testing.T) {
 			"Test chain nil",
 			func() error {
 				chain := &ErrorChain{chain: nil}
-				chain.Chain(errors.New("error1"))
+				chain.Append(errors.New("error1"))
 				return chain
 			},
 			"error1",
@@ -58,7 +58,7 @@ func TestErrorChain(t *testing.T) {
 			"Test chain nil call",
 			func() error {
 				chain := &ErrorChain{chain: []error{errors.New("error1")}}
-				chain.Chain(nil)
+				chain.Append(nil)
 				return chain
 			},
 			"error1",
@@ -67,7 +67,7 @@ func TestErrorChain(t *testing.T) {
 			"Test chain one error",
 			func() error {
 				chain := &ErrorChain{chain: []error{errors.New("error1")}}
-				chain.Chain(errors.New("error2"))
+				chain.Append(errors.New("error2"))
 				return chain
 			},
 			"error1; error2",
@@ -76,7 +76,7 @@ func TestErrorChain(t *testing.T) {
 			"Test chain multi nil",
 			func() error {
 				chain := &ErrorChain{chain: []error{errors.New("error1")}}
-				chain.Chain(&ErrorChain{})
+				chain.Append(&ErrorChain{})
 				return chain
 			},
 			"error1",
@@ -85,7 +85,7 @@ func TestErrorChain(t *testing.T) {
 			"Test chain multi",
 			func() error {
 				chain := &ErrorChain{chain: []error{errors.New("error1")}}
-				chain.Chain(&ErrorChain{chain: []error{errors.New("error2"), errors.New("error3")}})
+				chain.Append(&ErrorChain{chain: []error{errors.New("error2"), errors.New("error3")}})
 				return chain
 			},
 			"error1; error2; error3",
@@ -391,11 +391,7 @@ func runCheck(fail bool) (result string, err error) {
 	return
 }
 
-var debugCheck = func() *Checker {
-	checker := NewChecker()
-	checker.SetFaulter(DebugFaulter{})
-	return checker
-}()
+var debugCheck = NewChecker()
 
 func runDebug(fail bool) (result string, err error) {
 	defer debugCheck.Recover(&err)

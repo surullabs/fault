@@ -286,7 +286,7 @@ type Call struct {
 	Name string // Name is the name of the calling function
 }
 
-func (c *Call) String() string { return fmt.Sprintf("%s:%d:%s", filepath.Base(c.File), c.Line, c.Name) }
+func (c *Call) String() string { return fmt.Sprintf("%s:%d", filepath.Base(c.File), c.Line) }
 
 func (c *Call) Equal(c2 *Call) bool {
 	if c == nil {
@@ -327,7 +327,16 @@ func (d *debugFault) Error() string {
 
 func (d *debugFault) Cause() error { return d }
 
-type DebugFaulter struct{}
+type DebugFaulter struct {
+	Prefix string
+}
+
+func (d DebugFaulter) prefix() string {
+	if d.Prefix != "" {
+		return d.Prefix
+	}
+	return checkerPrefix
+}
 
 var checkerPrefix = TypePrefix(&Checker{})
 
@@ -370,8 +379,8 @@ func ReadStack(prefix string) (trace []Call) {
 	return
 }
 
-func (DebugFaulter) New(err error) Fault {
-	return &debugFault{err: err, trace: ReadStack(checkerPrefix)}
+func (d DebugFaulter) New(err error) Fault {
+	return &debugFault{err: err, trace: ReadStack(d.prefix())}
 }
 
 // Traced returns an error with the entire stack trace

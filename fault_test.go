@@ -303,7 +303,7 @@ func TestDebugging(t *testing.T) {
 	fn := runtime.FuncForPC(ptr)
 	name := fn.Name()
 	_, line := fn.FileLine(ptr)
-	prefix := fmt.Sprintf("fault_test.go:%d:%s", line+5, name) // The fail is 5 lines into the function
+	prefix := fmt.Sprintf("fault_test.go:%d", line+5) // The fail is 5 lines into the function
 	for _, test := range []struct {
 		fail     error
 		expected string
@@ -332,8 +332,8 @@ func TestDebugging(t *testing.T) {
 	}
 
 	errStr := (&debugFault{err: errors.New("err")}).Error()
-	if errStr != "?:-1:?: err" {
-		t.Error("Found invalid error string")
+	if errStr != "?:-1: err" {
+		t.Error("Found invalid error string", errStr)
 	}
 }
 

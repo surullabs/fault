@@ -1,5 +1,8 @@
 Fault
 ======
+
+# DEPRECATED: This library is deprecated. Please do not use.
+
 [![GoDoc](https://godoc.org/github.com/surullabs/fault?status.png)](https://godoc.org/github.com/surullabs/fault) [![Build Status](https://drone.io/github.com/surullabs/fault/status.png)](https://drone.io/github.com/surullabs/fault/latest) [![Coverage Status](https://coveralls.io/repos/surullabs/fault/badge.png?branch=master)](https://coveralls.io/r/surullabs/fault?branch=master)
 
 Fault is a library that helps with package internal error handling in Go.
